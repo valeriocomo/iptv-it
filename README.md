@@ -1,4 +1,4 @@
-# playlist-generator
+# IP-TV playlist generator
 
 Generates an Italian free-to-air IPTV playlist for Jellyfin, ready to publish on GitHub.
 
