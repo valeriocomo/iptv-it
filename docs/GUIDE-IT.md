@@ -1,0 +1,241 @@
+# TV live italiana su Jellyfin con la playlist IPTV-Italia Plus
+
+_Aggiornata al 31 ottobre 2026_
+
+## Panoramica
+
+Con questi sei passi ottieni in Jellyfin oltre 70 canali italiani in chiaro (RAI, Mediaset, La7, Discovery, tematici e radio-TV) con la guida TV, usando la playlist `iptvitaplus.m3u` di Tundrak.
+
+La playlist non contiene un link alla guida TV e usa quattro tipi di flusso, ognuno con esigenze diverse:
+
+| Gruppo | Esempi | Tipo di flusso | Cosa serve |
+| --- | --- | --- | --- |
+| RAI | Rai 1, Rai 2, Rai 3, Rai News 24 | Relinker mediapolis.rai.it, poi HLS | IP italiano e User-Agent `HbbTV/1.6.1` |
+| Mediaset | Rete 4, Canale 5, Italia 1, TGCOM 24 | DASH (`.mpd`) in chiaro | User-Agent `HbbTV/1.6.1` |
+| Discovery, La7 e altri | NOVE, Real Time, DMAX, La7, TV2000 | HLS (`.m3u8`) | Niente di particolare |
+| Sky in chiaro | TV8, Cielo, Sky TG24 | HLS con token | Token che scade: il link viene rinnovato al Passo 1 |
+
+Prerequisiti:
+
+- Jellyfin 10.9 o successivo (i nomi delle opzioni cambiano un po' tra versioni)
+- Server che esce su internet con un IP italiano, indispensabile per i canali RAI
+- Un repository GitHub pubblico e, sul tuo computer, Docker (oppure Node.js 18+ e yt-dlp) per generare la playlist al Passo 1
+- Node.js (oppure Docker) per generare la guida TV al Passo 3
+- Facoltativo: Docker per Threadfin al Passo 6
+
+## Passo 1 — Genera la playlist sul tuo computer
+
+Il generatore scarica la playlist di Tundrak, rinnova i link di TV8, Cielo e Sky TG24 con yt-dlp e scrive il risultato in `public/iptvitaplus.m3u` nel tuo repository GitHub. Lo lanci a mano ogni volta che vuoi aggiornare la lista.
+
+Lancialo da una rete italiana, possibilmente la stessa del server Jellyfin: le dirette Sky sono visibili solo dall'Italia.
+
+**A. Prepara il repository** (una volta sola). Il repository è [valeriocomo/iptv-it](https://github.com/valeriocomo/iptv-it) e deve essere pubblico. Clonalo sul tuo computer:
+
+```bash
+git clone https://github.com/valeriocomo/iptv-it.git
+```
+
+**B. Prepara il generatore** (una volta sola). Metti nel clone del repository i file `Dockerfile`, `entrypoint.sh`, `generate.js`, `compose.yml` e `README.md`. Il `compose.yml` monta la sua stessa cartella e la playlist viene scritta in `public/iptvitaplus.m3u`, con lo stesso nome del file di Tundrak; la cartella `public` viene creata se manca. Poi costruisci l'immagine:
+
+```bash
+docker compose build
+```
+
+**C. Genera la playlist** (ogni volta che vuoi aggiornarla):
+
+```bash
+docker compose run --rm playlist-generator
+```
+
+Ogni esecuzione aggiorna anche yt-dlp e alla fine stampa un riepilogo, per esempio "Done: 71 channels written (Sky: 3 updated, 0 not updated)".
+
+| Messaggio | Significato |
+| --- | --- |
+| `Updated: TV8` | Link Sky rinnovato |
+| `Not updated: … (keeping the link from the previous run)` | yt-dlp non ha trovato un link nuovo: resta quello della generazione precedente |
+| `Not updated: … (keeping the link from the upstream playlist)` | Nessun link nuovo né precedente: quel canale probabilmente non funziona |
+| `Error: … The output file was not changed.` | Download o yt-dlp non riusciti: il file non è stato toccato |
+
+Il supporto di yt-dlp è confermato per la diretta di TV8; per Cielo e Sky TG24 non è verificato. Se restano "Not updated", per quei canali c'è il digitale terrestre (canali 26 e 50).
+
+Su Linux il container scrive il file come utente 1000. Se `id -u` ti dà un numero diverso, lancialo così:
+
+```bash
+PUID=$(id -u) PGID=$(id -g) docker compose run --rm playlist-generator
+```
+
+Senza Docker serve Node.js 18 o successivo e yt-dlp (`pip install -U yt-dlp`); poi lanci `node generate.js iptv-it/public`.
+
+## Passo 1b — Pubblica la playlist su GitHub
+
+Dopo ogni generazione carichi il file sul repository e Jellyfin lo legge dal suo link pubblico.
+
+```bash
+cd iptv-it
+git add public/iptvitaplus.m3u
+git commit -m "Update playlist"
+git push
+```
+
+Se `git commit` risponde "nothing to commit", la playlist non è cambiata e non c'è niente da pubblicare.
+
+L'indirizzo da dare a Jellyfin è l'URL raw del file:
+
+```
+https://raw.githubusercontent.com/valeriocomo/iptv-it/refs/heads/main/public/iptvitaplus.m3u
+```
+
+Aprilo nel browser per controllare: deve mostrare il testo della playlist. GitHub tiene il file in cache per circa 5 minuti, quindi dopo un push le modifiche possono arrivare con qualche minuto di ritardo.
+
+Il repository è pubblico: chiunque può vedere la playlist, compresi i link Sky con il token.
+
+## Passo 2 — Aggiungi il sintonizzatore M3U
+
+L'impostazione decisiva è lo User-Agent `HbbTV/1.6.1`: senza, RAI e Mediaset rifiutano il collegamento.
+
+1. Apri **Dashboard → TV in diretta**.
+2. Accanto a **Dispositivi sintonizzatore** premi **+**.
+3. Compila i campi così:
+
+| Campo | Valore | Note |
+| --- | --- | --- |
+| Tipo sintonizzatore | M3U Tuner |  |
+| File o URL | `https://raw.githubusercontent.com/valeriocomo/iptv-it/refs/heads/main/public/iptvitaplus.m3u` | L'URL raw del Passo 1b |
+| User agent | `HbbTV/1.6.1` | Vale per tutti i canali; agli altri non dà fastidio |
+| Limite flussi simultanei | 0 | 0 = nessun limite |
+| Consenti condivisione del flusso | Attivo | Più dispositivi sullo stesso canale usano un solo flusso |
+| Ignora timestamp DTS | Disattivo | Attivalo solo se vedi scatti o audio fuori sincrono |
+| Leggi input al frame rate nativo | Disattivo |  |
+
+4. Premi **Salva**. I canali compaiono nella sezione TV in diretta dopo qualche secondo.
+
+Jellyfin non applica in modo affidabile le righe `#EXTVLCOPT` canale per canale: per questo lo User-Agent va messo nel sintonizzatore. Se la tua versione non mostra il campo User agent, passa direttamente al Passo 6.
+
+## Passo 3 — Crea la guida TV e collegala
+
+I `tvg-id` della playlist (`Rai1.it`, `Canale5.it`, `La7.it`…) seguono lo schema di iptv-org, quindi la guida generata con iptv-org/epg è quella che si abbina meglio.
+
+**A. Genera la guida** sul server, o su un'altra macchina sempre accesa della stessa rete:
+
+```bash
+git clone --depth 1 https://github.com/iptv-org/epg.git /opt/epg
+cd /opt/epg
+npm install
+npm run grab -- --site=guidatv.sky.it --output=guide.xml
+```
+
+La fonte guidatv.sky.it copre circa 178 canali italiani, compresi RAI, Mediaset, La7 e Discovery.
+
+**B. Rendila raggiungibile da Jellyfin:**
+
+```bash
+npm run serve
+```
+
+La guida sarà su `http://<ip-della-macchina>:3000/guide.xml`. Lascia il comando sempre attivo, per esempio come servizio systemd o in una sessione tmux.
+
+**C. Aggiornala ogni notte** con una riga di crontab (`crontab -e`):
+
+```bash
+0 4 * * * cd /opt/epg && npm run grab -- --site=guidatv.sky.it --output=guide.xml
+```
+
+**D. Aggiungila a Jellyfin:**
+
+1. **Dashboard → TV in diretta → Fornitori dati guida → + → XMLTV**.
+2. In **File o URL** inserisci `http://<ip-della-macchina>:3000/guide.xml`. Se Jellyfin è in Docker, usa l'IP della macchina e non `localhost`.
+3. Abilita il fornitore per il sintonizzatore creato al Passo 2 e salva.
+
+## Passo 4 — Aggiorna la guida e abbina i canali
+
+Jellyfin abbina da solo i canali alla guida tramite il `tvg-id`; quelli rimasti senza programmi li colleghi a mano.
+
+1. Vai in **Dashboard → Attività pianificate**, trova **Aggiorna guida** e avvialo. La prima volta può richiedere qualche minuto.
+2. Apri la guida TV da un client: i canali con i programmi sono già abbinati.
+3. Per gli altri torna in **Dashboard → TV in diretta**, apri il menu (⋮) del fornitore XMLTV e scegli **Mappa canali**.
+4. Associa ogni canale della playlist alla voce corrispondente della guida, salva e avvia di nuovo **Aggiorna guida**.
+
+I canali radio-TV e alcuni tematici potrebbero non avere una guida: è normale e non impedisce la visione.
+
+## Passo 5 — Prova i canali chiave
+
+Quattro canali bastano a capire se tutta la configurazione funziona; provali in quest'ordine.
+
+| Ordine | Canale | Cosa verifica | Se non parte |
+| --- | --- | --- | --- |
+| 1 | La7 | Il sintonizzatore legge la playlist | Apri l'URL raw nel browser e controlla che il repository sia pubblico (Passo 1b) |
+| 2 | NOVE | I flussi HLS normali | Il link è cambiato: rigenera e ripubblica la playlist |
+| 3 | Canale 5 | Flussi DASH Mediaset e User-Agent | Controlla lo User-Agent, poi passa al Passo 6 |
+| 4 | Rai 1 | Relinker RAI, IP italiano e User-Agent | Verifica l'IP del server, poi passa al Passo 6 |
+
+Per capire se il problema RAI è l'IP, lancia questo comando dal server:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -L -A "HbbTV/1.6.1" \
+  "http://mediapolis.rai.it/relinker/relinkerServlet.htm?cont=2606803&output=7&forceUserAgent=raiplayappletv"
+```
+
+Se risponde `200` il flusso è raggiungibile e il problema sta in Jellyfin. Se risponde `403`, il server non esce con un IP italiano oppure la RAI ha cambiato qualcosa.
+
+## Passo 6 (facoltativo) — Threadfin come intermediario
+
+Se RAI o Mediaset non partono anche con lo User-Agent giusto, Threadfin si mette tra la playlist e Jellyfin e gestisce lui i flussi con FFmpeg e un buffer. Jellyfin lo vede come un sintonizzatore HDHomeRun.
+
+**A. Avvia Threadfin** con questo `docker-compose.yml`:
+
+```yaml
+services:
+  threadfin:
+    image: fyb3roptik/threadfin:latest
+    container_name: threadfin
+    ports:
+      - "34400:34400"
+    volumes:
+      - ./threadfin/conf:/home/threadfin/conf
+    environment:
+      - TZ=Europe/Rome
+    restart: unless-stopped
+```
+
+```bash
+docker compose up -d
+```
+
+**B. Configuralo** dall'interfaccia web su `http://<ip>:34400/web`:
+
+1. Nella procedura iniziale scegli **HDHomeRun** come tipo di sintonizzatore.
+2. In **Playlist** aggiungi `https://raw.githubusercontent.com/valeriocomo/iptv-it/refs/heads/main/public/iptvitaplus.m3u`.
+3. In **XMLTV** aggiungi `http://<ip-della-macchina>:3000/guide.xml`.
+4. In **Settings** imposta il buffer su **FFmpeg** e lo User-Agent su `HbbTV/1.6.1`.
+5. In **Mapping** attiva i canali che vuoi e assegna a ciascuno la sua voce della guida.
+
+**C. Collegalo a Jellyfin:**
+
+1. In **Dashboard → TV in diretta** elimina il sintonizzatore M3U del Passo 2 e il fornitore XMLTV del Passo 3.
+2. Aggiungi un sintonizzatore di tipo **HDHomeRun** con indirizzo `http://<ip>:34400`.
+3. Aggiungi un fornitore **XMLTV** con l'URL della guida di Threadfin: `http://<ip>:34400/xmltv/threadfin.xml`.
+4. Avvia di nuovo **Aggiorna guida**.
+
+I nomi esatti delle voci di menu di Threadfin possono variare leggermente tra versioni.
+
+## Risoluzione problemi
+
+| Sintomo | Causa probabile | Soluzione |
+| --- | --- | --- |
+| Nessun canale nella TV in diretta | Jellyfin non riesce a scaricare la playlist | Apri l'URL raw nel browser: deve mostrare la playlist e il repository deve essere pubblico |
+| Jellyfin mostra ancora i link vecchi | Cache di GitHub o lista non riletta | Aspetta 5 minuti dopo il push, poi avvia **Aggiorna guida** |
+| Solo i canali RAI non partono | IP non italiano o User-Agent mancante | Fai il test `curl` del Passo 5, poi prova Threadfin |
+| Solo i canali Mediaset non partono | FFmpeg di Jellyfin non gestisce bene i flussi DASH | Threadfin con buffer FFmpeg (Passo 6) |
+| I canali partono e si bloccano dopo pochi secondi | Timestamp del flusso irregolari | Attiva **Ignora timestamp DTS**; se non basta, Threadfin |
+| Guida vuota | Guida non aggiornata o `tvg-id` diversi | Avvia **Aggiorna guida** e abbina a mano (Passo 4) |
+| Un singolo canale smette di funzionare | L'emittente ha cambiato il link | Rigenera e ripubblica la playlist (Passi 1 e 1b) |
+| TV8, Cielo o Sky TG24 non vanno | Token scaduto o yt-dlp senza link nuovo | Rigenera la playlist; se resta "Not updated", usa il digitale terrestre |
+
+## Fonti
+
+- [Playlist IPTV-Italia Plus (Tundrak)](https://raw.githubusercontent.com/Tundrak/IPTV-Italia/main/iptvitaplus.m3u)
+- [Segnalazioni degli errori 403 sui canali RAI](https://github.com/Tundrak/IPTV-Italia/issues/119)
+- [iptv-org/epg, strumento per la guida TV](https://github.com/iptv-org/epg)
+- [Jellyfin Live TV & IPTV Setup 2026 (JellyWatch)](https://jellywatch.app/blog/jellyfin-live-tv-iptv-setup-guide-2026)
+- [Jellyfin Live TV senza sintonizzatore: Threadfin e Dispatcharr (JellyWatch)](https://jellywatch.app/blog/jellyfin-m3u-tuner-live-tv-without-hardware-threadfin-dispatcharr-2026)
+- [Forum Jellyfin: IPTV non compatibili e proxy](https://forum.jellyfin.org/printthread.php?tid=10304)
