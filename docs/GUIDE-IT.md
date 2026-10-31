@@ -20,7 +20,7 @@ Prerequisiti:
 - Jellyfin 10.9 o successivo (i nomi delle opzioni cambiano un po' tra versioni)
 - Server che esce su internet con un IP italiano, indispensabile per i canali RAI
 - Un repository GitHub pubblico e, sul tuo computer, Docker (oppure Node.js 18+ e yt-dlp) per generare la playlist al Passo 1
-- Node.js (oppure Docker) per generare la guida TV al Passo 3
+- Docker sul tuo computer anche per generare la guida TV al Passo 3
 - Facoltativo: Docker per Threadfin al Passo 6
 
 ## Passo 1 — Genera la playlist sul tuo computer
@@ -111,40 +111,73 @@ L'impostazione decisiva è lo User-Agent `HbbTV/1.6.1`: senza, RAI e Mediaset ri
 
 Jellyfin non applica in modo affidabile le righe `#EXTVLCOPT` canale per canale: per questo lo User-Agent va messo nel sintonizzatore. Se la tua versione non mostra il campo User agent, passa direttamente al Passo 6.
 
-## Passo 3 — Crea la guida TV e collegala
+## Passo 3 — Genera la guida TV sul tuo computer
 
-I `tvg-id` della playlist (`Rai1.it`, `Canale5.it`, `La7.it`…) seguono lo schema di iptv-org, quindi la guida generata con iptv-org/epg è quella che si abbina meglio.
+Il generatore della guida legge la playlist del Passo 1, abbina ogni canale a una fonte italiana di iptv-org/epg e scrive `public/guide.xml`, che pubblichi su GitHub come la playlist. Gira in Docker, come il generatore della playlist.
 
-**A. Genera la guida** sul server, o su un'altra macchina sempre accesa della stessa rete:
+Nella guida ogni canale ha lo stesso ID della playlist (`Rai1.it`, `Canale5.it`…), quindi Jellyfin li abbina da solo. L'abbinamento serve perché iptv-org oggi usa ID diversi, come `Rai1.it@SD`.
 
-```bash
-git clone --depth 1 https://github.com/iptv-org/epg.git /opt/epg
-cd /opt/epg
-npm install
-npm run grab -- --site=guidatv.sky.it --output=guide.xml
-```
-
-La fonte guidatv.sky.it copre circa 178 canali italiani, compresi RAI, Mediaset, La7 e Discovery.
-
-**B. Rendila raggiungibile da Jellyfin:**
+**A. Prepara il generatore** (una volta sola). Il generatore è nella cartella `epg` del repository (`Dockerfile`, `entrypoint.sh`, `generate-epg.js`) ed è il servizio `epg-generator` del `compose.yml`. Costruisci l'immagine:
 
 ```bash
-npm run serve
+docker compose build epg-generator
 ```
 
-La guida sarà su `http://<ip-della-macchina>:3000/guide.xml`. Lascia il comando sempre attivo, per esempio come servizio systemd o in una sessione tmux.
-
-**C. Aggiornala ogni notte** con una riga di crontab (`crontab -e`):
+**B. Genera la guida**, sempre dopo la playlist:
 
 ```bash
-0 4 * * * cd /opt/epg && npm run grab -- --site=guidatv.sky.it --output=guide.xml
+docker compose run --rm playlist-generator
+docker compose run --rm epg-generator
 ```
+
+Su Linux, se `id -u` non restituisce 1000, anteponi `PUID=$(id -u) PGID=$(id -g)` a entrambi i comandi, come al Passo 1.
+
+Ogni esecuzione aggiorna i lettori dei siti di iptv-org/epg, che cambiano spesso; lo scaricamento richiede qualche minuto. Il riepilogo elenca i canali abbinati con la fonte di ciascuno, per esempio `Rai1.it <- raiplay.it "RAI 1" (by id)`, poi quelli senza fonte. Se lo scaricamento non produce nessun programma, `public/guide.xml` non viene toccato.
+
+| Fonte | Canali |
+| --- | --- |
+| raiplay.it | Canali RAI |
+| mediasetinfinity.mediaset.it | Canali Mediaset |
+| superguidatv.it | La7, Discovery, Sky in chiaro e gli altri |
+
+Con la playlist attuale vengono abbinati 58 canali su 71; i 13 restanti sono radio-TV e canali minori che le fonti non coprono (BOM Channel, Padre Pio TV, Byoblu, RTV San Marino e simili). Abbinato però non vuol dire con programmi: nella guida generata il 31 ottobre 2026 superguidatv.it non ha restituito nulla, e hanno programmi solo RAI e Mediaset (25 canali). Se succede anche a te, cambia l'ordine delle fonti con la variabile `SITES` (sotto), mettendo guidatv.sky.it e guida.tv prima di superguidatv.it.
+
+Per controllare l'abbinamento senza scaricare nulla:
+
+```bash
+docker compose run --rm epg-generator --match-only
+```
+
+**C. Pubblicala:**
+
+```bash
+cd iptv-it
+git add public/guide.xml
+git commit -m "Update TV guide"
+git push
+```
+
+Le fonti forniscono 2 o 3 giorni di programmi: rigenera e ripubblica la guida almeno ogni 2 giorni, altrimenti in Jellyfin resta vuota.
 
 **D. Aggiungila a Jellyfin:**
 
 1. **Dashboard → TV in diretta → Fornitori dati guida → + → XMLTV**.
-2. In **File o URL** inserisci `http://<ip-della-macchina>:3000/guide.xml`. Se Jellyfin è in Docker, usa l'IP della macchina e non `localhost`.
+2. In **File o URL** inserisci `https://raw.githubusercontent.com/valeriocomo/iptv-it/refs/heads/main/public/guide.xml`.
 3. Abilita il fornitore per il sintonizzatore creato al Passo 2 e salva.
+
+Per cambiare il comportamento, aggiungi le variabili nella sezione `environment` del servizio `epg-generator` nel `compose.yml` (`DAYS` e `MAX_CONNECTIONS` ci sono già, commentate):
+
+| Variabile | Predefinito | Significato |
+| --- | --- | --- |
+| `DAYS` | quello di ogni fonte (2–3) | Giorni di programmi da scaricare |
+| `MAX_CONNECTIONS` | `5` | Richieste in parallelo ai siti |
+| `SITES` | `raiplay.it,mediasetinfinity.mediaset.it,superguidatv.it,guidatv.sky.it,guida.tv` | Fonti da usare, in ordine di preferenza |
+
+Per esempio, per preferire guidatv.sky.it a superguidatv.it:
+
+```yaml
+      - SITES=raiplay.it,mediasetinfinity.mediaset.it,guidatv.sky.it,guida.tv,superguidatv.it
+```
 
 ## Passo 4 — Aggiorna la guida e abbina i canali
 
@@ -205,7 +238,7 @@ docker compose up -d
 
 1. Nella procedura iniziale scegli **HDHomeRun** come tipo di sintonizzatore.
 2. In **Playlist** aggiungi `https://raw.githubusercontent.com/valeriocomo/iptv-it/refs/heads/main/public/iptvitaplus.m3u`.
-3. In **XMLTV** aggiungi `http://<ip-della-macchina>:3000/guide.xml`.
+3. In **XMLTV** aggiungi `https://raw.githubusercontent.com/valeriocomo/iptv-it/refs/heads/main/public/guide.xml`.
 4. In **Settings** imposta il buffer su **FFmpeg** e lo User-Agent su `HbbTV/1.6.1`.
 5. In **Mapping** attiva i canali che vuoi e assegna a ciascuno la sua voce della guida.
 

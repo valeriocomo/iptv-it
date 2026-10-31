@@ -20,7 +20,7 @@ Requirements:
 - Jellyfin 10.9 or later (option names vary slightly between versions)
 - A server that reaches the internet with an Italian IP, required for the RAI channels
 - A public GitHub repository and, on your computer, Docker (or Node.js 18+ and yt-dlp) to generate the playlist in Step 1
-- Node.js (or Docker) to generate the TV guide in Step 3
+- Docker on your computer to generate the TV guide in Step 3 too
 - Optional: Docker for Threadfin in Step 6
 
 ## Step 1 — Generate the playlist on your computer
@@ -111,40 +111,73 @@ The key setting is the User-Agent `HbbTV/1.6.1`: without it, RAI and Mediaset re
 
 Jellyfin does not reliably apply the per-channel `#EXTVLCOPT` lines, which is why the User-Agent goes in the tuner settings. If your version has no User agent field, go straight to Step 6.
 
-## Step 3 — Create the TV guide and connect it
+## Step 3 — Generate the TV guide on your computer
 
-The playlist's `tvg-id` values (`Rai1.it`, `Canale5.it`, `La7.it`…) follow the iptv-org scheme, so a guide generated with iptv-org/epg is the best match.
+The guide generator reads the playlist from Step 1, matches each channel to an Italian iptv-org/epg source and writes `public/guide.xml`, which you publish on GitHub just like the playlist. It runs in Docker, like the playlist generator.
 
-**A. Generate the guide** on the server, or on another always-on machine on the same network:
+In the guide every channel has the same ID as in the playlist (`Rai1.it`, `Canale5.it`…), so Jellyfin matches them on its own. The matching is needed because iptv-org now uses different IDs, such as `Rai1.it@SD`.
 
-```bash
-git clone --depth 1 https://github.com/iptv-org/epg.git /opt/epg
-cd /opt/epg
-npm install
-npm run grab -- --site=guidatv.sky.it --output=guide.xml
-```
-
-The guidatv.sky.it source covers about 178 Italian channels, including RAI, Mediaset, La7 and Discovery.
-
-**B. Make it reachable from Jellyfin:**
+**A. Set up the generator** (once). The generator lives in the repository's `epg` folder (`Dockerfile`, `entrypoint.sh`, `generate-epg.js`) and is the `epg-generator` service in `compose.yml`. Build the image:
 
 ```bash
-npm run serve
+docker compose build epg-generator
 ```
 
-The guide will be at `http://<machine-ip>:3000/guide.xml`. Keep the command running, for example as a systemd service or in a tmux session.
-
-**C. Refresh it every night** with a crontab line (`crontab -e`):
+**B. Generate the guide**, always after the playlist:
 
 ```bash
-0 4 * * * cd /opt/epg && npm run grab -- --site=guidatv.sky.it --output=guide.xml
+docker compose run --rm playlist-generator
+docker compose run --rm epg-generator
 ```
+
+On Linux, if `id -u` does not return 1000, prefix both commands with `PUID=$(id -u) PGID=$(id -g)`, as in Step 1.
+
+Each run updates the iptv-org/epg site parsers, which change often; the download takes a few minutes. The summary lists the matched channels with the source of each one, for example `Rai1.it <- raiplay.it "RAI 1" (by id)`, then the channels with no source. If the download returns no programmes, `public/guide.xml` is not touched.
+
+| Source | Channels |
+| --- | --- |
+| raiplay.it | RAI channels |
+| mediasetinfinity.mediaset.it | Mediaset channels |
+| superguidatv.it | La7, Discovery, free-to-air Sky and the rest |
+
+With the current playlist, 58 of 71 channels are matched; the other 13 are radio-TV and minor channels the sources do not cover (BOM Channel, Padre Pio TV, Byoblu, RTV San Marino and similar). Matched does not mean with programmes, though: in the guide generated on October 31, 2026 superguidatv.it returned nothing, and only RAI and Mediaset have programmes (25 channels). If that happens to you too, change the source order with the `SITES` variable (below), putting guidatv.sky.it and guida.tv before superguidatv.it.
+
+To check the matching without downloading anything:
+
+```bash
+docker compose run --rm epg-generator --match-only
+```
+
+**C. Publish it:**
+
+```bash
+cd iptv-it
+git add public/guide.xml
+git commit -m "Update TV guide"
+git push
+```
+
+The sources provide 2 or 3 days of programmes: regenerate and republish the guide at least every 2 days, or it will run empty in Jellyfin.
 
 **D. Add it to Jellyfin:**
 
 1. **Dashboard → Live TV → TV Guide Data Providers → + → XMLTV**.
-2. In **File or URL** enter `http://<machine-ip>:3000/guide.xml`. If Jellyfin runs in Docker, use the machine's IP, not `localhost`.
+2. In **File or URL** enter `https://raw.githubusercontent.com/valeriocomo/iptv-it/refs/heads/main/public/guide.xml`.
 3. Enable the provider for the tuner created in Step 2 and save.
+
+To change the behaviour, add the variables to the `environment` section of the `epg-generator` service in `compose.yml` (`DAYS` and `MAX_CONNECTIONS` are already there, commented out):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DAYS` | each source's own (2–3) | Days of programmes to download |
+| `MAX_CONNECTIONS` | `5` | Parallel requests to the guide sites |
+| `SITES` | `raiplay.it,mediasetinfinity.mediaset.it,superguidatv.it,guidatv.sky.it,guida.tv` | Sources to use, in order of preference |
+
+For example, to prefer guidatv.sky.it over superguidatv.it:
+
+```yaml
+      - SITES=raiplay.it,mediasetinfinity.mediaset.it,guidatv.sky.it,guida.tv,superguidatv.it
+```
 
 ## Step 4 — Refresh the guide and map the channels
 
@@ -205,7 +238,7 @@ docker compose up -d
 
 1. In the setup wizard, choose **HDHomeRun** as the tuner type.
 2. Under **Playlist**, add `https://raw.githubusercontent.com/valeriocomo/iptv-it/refs/heads/main/public/iptvitaplus.m3u`.
-3. Under **XMLTV**, add `http://<machine-ip>:3000/guide.xml`.
+3. Under **XMLTV**, add `https://raw.githubusercontent.com/valeriocomo/iptv-it/refs/heads/main/public/guide.xml`.
 4. Under **Settings**, set the buffer to **FFmpeg** and the User-Agent to `HbbTV/1.6.1`.
 5. Under **Mapping**, enable the channels you want and assign each one its guide entry.
 
