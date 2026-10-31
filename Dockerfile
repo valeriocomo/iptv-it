@@ -13,7 +13,8 @@ ENV PATH="/opt/yt/bin:$PATH" \
     OUTPUT_DIR=/data/public
 
 WORKDIR /app
-COPY generate.js entrypoint.sh ./
+COPY src/ ./src/
+COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
 # mount your local clone of the GitHub repository here

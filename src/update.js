@@ -1,5 +1,5 @@
-// update.js: refreshes the TV8, Cielo and Sky TG24 links with yt-dlp.
-// Usage: node update.js [playlist.m3u]   (default: italia.m3u)
+// src/update.js: refreshes the TV8, Cielo and Sky TG24 links with yt-dlp.
+// Usage: node src/update.js [playlist.m3u]   (default: italia.m3u)
 // If yt-dlp finds no new link, the channel keeps its old one and is
 // retried on the next run: no channel is ever dropped from the playlist.
 const fs = require('fs');

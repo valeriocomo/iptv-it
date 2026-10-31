@@ -4,27 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A manual, run-once tool that builds an Italian free-to-air IPTV playlist (`italia.m3u`) for Jellyfin. It downloads the upstream playlist (Tundrak/IPTV-Italia `iptvitaplus.m3u`), replaces the TV8, Cielo and Sky TG24 links with fresh ones from yt-dlp (Sky links carry expiring tokens), and writes the result into a separate, locally cloned public GitHub repo. The user commits and pushes that file by hand. There is no build step, no tests, no linter, and no `package.json`: plain Node.js with no dependencies.
+A manual, run-once tool that builds an Italian free-to-air IPTV playlist (`iptvitaplus.m3u`, written to `public/`) for Jellyfin. It downloads the upstream playlist (Tundrak/IPTV-Italia `iptvitaplus.m3u`), replaces the TV8, Cielo and Sky TG24 links with fresh ones from yt-dlp (Sky links carry expiring tokens), and writes the result into a separate, locally cloned public GitHub repo. The user commits and pushes that file by hand. There is no build step, no tests, no linter, and no `package.json`: plain Node.js with no dependencies.
 
 ## Commands
 
 ```bash
 docker compose build                              # build the image
 docker compose run --rm playlist-generator        # generate once (set PUID/PGID if your uid is not 1000)
-node generate.js /path/to/repo/italia.m3u         # without Docker (Node 18+ and yt-dlp required)
+node src/generate.js /path/to/repo/public          # without Docker (Node 18+ and yt-dlp required)
 ```
 
-Before running with Docker, `compose.yml` needs `/path/to/your/repo` replaced with the real clone path. Sky streams are geo-blocked, so a real run needs an Italian IP.
+`compose.yml` mounts its own folder (`.`) as `/data`, so the output goes to `public/` there; use an absolute path if the files live outside the clone. Sky streams are geo-blocked, so a real run needs an Italian IP.
 
 ## Architecture
 
-- `generate.js` is the real entry point. `main()` checks yt-dlp exists, downloads and validates the source (`#EXTM3U`), and parses it into a header and channel blocks (`#EXTINF` line, optional `#` option lines, link as the last line). For each channel whose `tvg-id` is in `SKY_CHANNELS` it calls `fetchNewLink`, which tries `yt-dlp -g -f b` and then `yt-dlp -g`. If both fail, it keeps the link from the previous output file, or the upstream link if there was none. Any fatal error exits 1 before the output is written, so a failed run never changes the file.
-- `entrypoint.sh` is the container entrypoint: it upgrades yt-dlp (non-fatal on failure), then `exec`s `generate.js "$OUTPUT"`.
+- `src/generate.js` is the real entry point. `main()` checks yt-dlp exists, downloads and validates the source (`#EXTM3U`), and parses it into a header and channel blocks (`#EXTINF` line, optional `#` option lines, link as the last line). For each channel whose `tvg-id` is in `SKY_CHANNELS` it calls `fetchNewLink`, which tries `yt-dlp -g -f b` and then `yt-dlp -g`. If both fail, it keeps the link from the previous output file, or the upstream link if there was none. Any fatal error exits 1 before the output is written, so a failed run never changes the file.
+- `entrypoint.sh` is the container entrypoint: it upgrades yt-dlp (non-fatal on failure), then `exec`s `src/generate.js "$OUTPUT_DIR"`.
 - The Dockerfile installs yt-dlp in a venv at `/opt/yt` that is world-writable, so the self-update works when the container runs as a non-root `PUID:PGID`. `HOME=/tmp` for the same reason.
-- `update.js` is an older standalone version that edits an existing playlist in place. It is not used by the Dockerfile or README and is superseded by `generate.js`. Keep the two `SKY_CHANNELS` maps and the `fetchNewLink` logic in step if you change either.
+- `src/update.js` is an older standalone version that edits an existing playlist in place. It is not used by the Dockerfile or README and is superseded by `src/generate.js`. Keep the two `SKY_CHANNELS` maps and the `fetchNewLink` logic in step if you change either.
 
 ## Things to keep in mind
 
-- To add or change a refreshed channel, edit `SKY_CHANNELS` (tvg-id to official live page) in `generate.js`.
-- The `README.md` documents the console messages (`Updated:`, `Not updated:`, `Error:`) and the env vars (`OUTPUT`, `SOURCE_URL`, `PUID`/`PGID`). Update it if you change them.
+- To add or change a refreshed channel, edit `SKY_CHANNELS` (tvg-id to official live page) in `src/generate.js`.
+- The `README.md` documents the console messages (`Updated:`, `Not updated:`, `Error:`) and the env vars (`OUTPUT_DIR`, `SOURCE_URL`, `PUID`/`PGID`). Update it if you change them.
 - Jellyfin needs the user agent `HbbTV/1.6.1` for the RAI and Mediaset streams. This is configured in Jellyfin, not in this repo.
