@@ -1,0 +1,15 @@
+# Run with: docker compose run --rm playlist-generator
+services:
+  playlist-generator:
+    build: .
+    image: playlist-generator
+    # write the file as your user, not as root (Linux).
+    # Default 1000:1000; otherwise run:
+    #   PUID=$(id -u) PGID=$(id -g) docker compose run --rm playlist-generator
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      - OUTPUT_DIR=/data/public
+    volumes:
+      # the folder containing this file (your repository clone);
+      # use an absolute path instead if compose.yml lives elsewhere
+      - .:/data
