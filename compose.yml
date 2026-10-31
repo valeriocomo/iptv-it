@@ -13,3 +13,15 @@ services:
       # the folder containing this file (your repository clone);
       # use an absolute path instead if compose.yml lives elsewhere
       - .:/data
+
+  epg-generator:
+    build: ./epg
+    image: epg-generator
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      - PLAYLIST=/data/public/iptvitaplus.m3u
+      - OUTPUT=/data/public/guide.xml
+      # - DAYS=3              # days of guide to download (default: per source)
+      # - MAX_CONNECTIONS=5   # parallel requests to the guide sites
+    volumes:
+      - .:/data      
