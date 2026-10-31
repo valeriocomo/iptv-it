@@ -6,7 +6,8 @@ Each run:
 
 1. downloads the upstream playlist from [Tundrak/IPTV-Italia](https://github.com/Tundrak/IPTV-Italia) (`iptvitaplus.m3u`);
 2. refreshes the TV8, Cielo and Sky TG24 links with [yt-dlp](https://github.com/yt-dlp/yt-dlp), since Sky links carry a token that expires;
-3. writes the result to `public/`, keeping the upstream file name (`public/iptvitaplus.m3u`).
+3. opens every link with the same User-Agent Jellyfin uses (`HbbTV/1.6.1`); a link that does not answer is replaced with a working official one: for RAI the same relinker link without the old parameters, otherwise a link from [iptv-org](https://github.com/iptv-org/iptv) (`streams/it.m3u`) that is not a third-party rebroadcast;
+4. writes the result to `public/`, keeping the upstream file name (`public/iptvitaplus.m3u`).
 
 Nothing runs automatically: you start it by hand, then commit and push the file yourself.
 
@@ -53,7 +54,14 @@ PUID=$(id -u) PGID=$(id -g) docker compose run --rm playlist-generator
 | `Updated: TV8` | Sky link refreshed |
 | `Not updated: … (keeping the link from the previous run)` | yt-dlp found no new link; the one from the last run is kept |
 | `Not updated: … (keeping the link from the upstream playlist)` | No new link and no previous run; the channel probably does not work |
+| `  reason: ERROR: …` | Printed under each "Not updated" line: the error reported by yt-dlp |
+| `Replaced: NOVE (ENOTFOUND) -> https://… [iptv-org]` | The upstream link did not answer; a working official link was used instead (`[RAI relinker]` or `[iptv-org]`) |
+| `Not working, no official alternative found` | Channels whose link does not answer and that have no working official alternative; kept in the playlist, or removed with `REMOVE_NOT_WORKING=1` |
+| `… unofficial alternative(s) ignored` | iptv-org had links for the channel, but only on third-party rebroadcast servers |
+| `Links: 60 working, 8 replaced, 3 not working` | Summary of the link check |
 | `Error: … The output file was not changed.` | Download failed or yt-dlp is missing; the file was not touched |
+
+A link is "working" when it answers with an HLS (`#EXTM3U`) or DASH (`<MPD`) manifest within 10 seconds. iptv-org links are ignored when they are third-party rebroadcasts: hosts that are bare IP addresses or use a non-standard port, and servers that carry channels of different broadcasters (for example La7 and RAI on the same server), since an official server only carries its own broadcaster's channels. If a channel passes the check but Jellyfin still cannot play it, the problem is on the Jellyfin side (User-Agent, FFmpeg), not the link.
 
 yt-dlp support is confirmed for the TV8 live stream; Cielo and Sky TG24 are not verified.
 
@@ -91,6 +99,10 @@ node playlist/generate-playlist.js /path/to/your/repo/public
 | --- | --- | --- |
 | `OUTPUT_DIR` | `/data/public` | Output folder inside the container |
 | `SOURCE_URL` | Tundrak `iptvitaplus.m3u` | Upstream playlist to start from; its file name is used for the output |
+| `ALT_SOURCE_URL` | iptv-org `streams/it.m3u` | Playlist the replacement links are taken from |
+| `USER_AGENT` | `HbbTV/1.6.1` | User-Agent used to check the links; keep it equal to the one set on the Jellyfin tuner |
+| `CHECK_STREAMS` | `1` | Set to `0` to skip the link check |
+| `REMOVE_NOT_WORKING` | `0` | Set to `1` to leave out of the playlist the channels whose link does not work |
 | `PUID` / `PGID` | `1000` | User and group that own the generated file (Linux) |
 
 ## Notes

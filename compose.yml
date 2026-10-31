@@ -10,6 +10,9 @@ services:
     environment:
       - OUTPUT_DIR=/data/public
       # - SOURCE_URL=https://...   # upstream playlist (default: Tundrak iptvitaplus.m3u)
+      # - USER_AGENT=HbbTV/1.6.1   # used to check the links: keep it equal to Jellyfin's
+      # - CHECK_STREAMS=0          # skip the link check
+      # - REMOVE_NOT_WORKING=1     # leave out channels whose link does not work
     volumes:
       # the folder containing this file (your repository clone);
       # use an absolute path instead if compose.yml lives elsewhere
@@ -25,4 +28,4 @@ services:
       # - DAYS=3              # days of guide to download (default: per source)
       # - MAX_CONNECTIONS=5   # parallel requests to the guide sites
     volumes:
-      - .:/data      
+      - .:/data

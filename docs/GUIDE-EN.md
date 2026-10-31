@@ -25,7 +25,7 @@ Requirements:
 
 ## Step 1 — Generate the playlist on your computer
 
-The generator downloads Tundrak's playlist, refreshes the TV8, Cielo and Sky TG24 links with yt-dlp and writes the result to `public/iptvitaplus.m3u` in your GitHub repository. You run it by hand whenever you want to update the playlist.
+The generator downloads Tundrak's playlist, refreshes the TV8, Cielo and Sky TG24 links with yt-dlp, tries every link with the same User-Agent as Jellyfin (`HbbTV/1.6.1`) and writes the result to `public/iptvitaplus.m3u` in your GitHub repository. You run it by hand whenever you want to update the playlist.
 
 Run it from an Italian network, ideally the same one as your Jellyfin server: Sky live streams are only available from Italy.
 
@@ -52,9 +52,16 @@ Each run also updates yt-dlp and ends with a summary, for example "Done: 71 chan
 | Message | Meaning |
 | --- | --- |
 | `Updated: TV8` | Sky link refreshed |
+| `  reason: ERROR: …` | Under each "Not updated" line: the error reported by yt-dlp |
+| `Replaced: NOVE (ENOTFOUND) -> https://… [iptv-org]` | Tundrak's link does not answer: it was replaced with a working official one (`[RAI relinker]` or `[iptv-org]`) |
+| `Not working, no official alternative found` | Channels whose link does not answer and that have no working official alternative; kept in the playlist, or removed with `REMOVE_NOT_WORKING=1` |
+| `… unofficial alternative(s) ignored` | iptv-org had links for the channel, but only on third-party rebroadcast servers |
+| `Links: 60 working, 8 replaced, 3 not working` | Summary of the link check |
 | `Not updated: … (keeping the link from the previous run)` | yt-dlp found no new link: the one from the previous run is kept |
 | `Not updated: … (keeping the link from the upstream playlist)` | No new or previous link: that channel probably does not work |
 | `Error: … The output file was not changed.` | Download or yt-dlp failed: the file was not touched |
+
+Tundrak's list is no longer maintained and many links have changed. That is why the generator opens every link the way Jellyfin would: if it does not answer with an HLS or DASH stream within 10 seconds, it looks for a working official alternative. For RAI channels it tries the same relinker without the old parameters, which now answer 503; for the others it looks in the [iptv-org](https://github.com/iptv-org/iptv) list, checked daily, skipping third-party rebroadcasts: servers on bare IP addresses or non-standard ports, and servers that carry channels of different broadcasters (for example La7 and RAI together), since an official server only carries its own broadcaster's channels. If a channel passes the check but Jellyfin still cannot play it, the problem is in Jellyfin (User-Agent, FFmpeg), not in the link.
 
 yt-dlp support is confirmed for the TV8 live stream; Cielo and Sky TG24 are not verified. If they stay "Not updated", those channels are still available over digital terrestrial TV (channels 26 and 50).
 
@@ -196,10 +203,10 @@ Four channels are enough to tell whether the whole setup works; test them in thi
 
 | Order | Channel | What it checks | If it does not play |
 | --- | --- | --- | --- |
-| 1 | La7 | The tuner reads the playlist | Open the raw URL in a browser and check that the repository is public (Step 1b) |
-| 2 | NOVE | Regular HLS streams | The link has changed: regenerate and republish the playlist |
+| 1 | La7 | The tuner reads the playlist | Check in the Step 1 summary whether the link is working or was replaced; then open the raw URL in a browser and check that the repository is public (Step 1b) |
+| 2 | NOVE | Regular HLS streams | Regenerate and republish the playlist: the generator replaces links that do not answer |
 | 3 | Canale 5 | Mediaset DASH streams and User-Agent | Check the User-Agent, then go to Step 6 |
-| 4 | Rai 1 | RAI relinker, Italian IP and User-Agent | Check the server's IP, then go to Step 6 |
+| 4 | Rai 1 | RAI relinker, Italian IP and User-Agent | Regenerate the playlist; if it stays under "Not working", check the server's IP, then go to Step 6 |
 
 To find out whether the RAI problem is the IP, run this command from the server:
 

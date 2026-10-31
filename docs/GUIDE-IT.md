@@ -25,7 +25,7 @@ Prerequisiti:
 
 ## Passo 1 — Genera la playlist sul tuo computer
 
-Il generatore scarica la playlist di Tundrak, rinnova i link di TV8, Cielo e Sky TG24 con yt-dlp e scrive il risultato in `public/iptvitaplus.m3u` nel tuo repository GitHub. Lo lanci a mano ogni volta che vuoi aggiornare la lista.
+Il generatore scarica la playlist di Tundrak, rinnova i link di TV8, Cielo e Sky TG24 con yt-dlp, prova ogni link con lo stesso User-Agent di Jellyfin (`HbbTV/1.6.1`) e scrive il risultato in `public/iptvitaplus.m3u` nel tuo repository GitHub. Lo lanci a mano ogni volta che vuoi aggiornare la lista.
 
 Lancialo da una rete italiana, possibilmente la stessa del server Jellyfin: le dirette Sky sono visibili solo dall'Italia.
 
@@ -52,9 +52,16 @@ Ogni esecuzione aggiorna anche yt-dlp e alla fine stampa un riepilogo, per esemp
 | Messaggio | Significato |
 | --- | --- |
 | `Updated: TV8` | Link Sky rinnovato |
+| `  reason: ERROR: …` | Sotto ogni "Not updated": l'errore restituito da yt-dlp |
+| `Replaced: NOVE (ENOTFOUND) -> https://… [iptv-org]` | Il link di Tundrak non risponde: è stato sostituito con uno ufficiale funzionante (`[RAI relinker]` o `[iptv-org]`) |
+| `Not working, no official alternative found` | Canali il cui link non risponde e senza alternative ufficiali funzionanti; restano nella playlist, oppure vengono tolti con `REMOVE_NOT_WORKING=1` |
+| `… unofficial alternative(s) ignored` | iptv-org aveva link per quel canale, ma solo su server di ritrasmissione di terzi |
+| `Links: 60 working, 8 replaced, 3 not working` | Riepilogo della prova dei link |
 | `Not updated: … (keeping the link from the previous run)` | yt-dlp non ha trovato un link nuovo: resta quello della generazione precedente |
 | `Not updated: … (keeping the link from the upstream playlist)` | Nessun link nuovo né precedente: quel canale probabilmente non funziona |
 | `Error: … The output file was not changed.` | Download o yt-dlp non riusciti: il file non è stato toccato |
+
+La lista di Tundrak non viene più aggiornata e molti link sono cambiati. Per questo il generatore apre ogni link come farebbe Jellyfin: se non risponde con un flusso HLS o DASH entro 10 secondi, cerca un'alternativa ufficiale funzionante. Per i canali RAI prova lo stesso relinker senza i vecchi parametri, che oggi rispondono 503; per gli altri cerca nella lista di [iptv-org](https://github.com/iptv-org/iptv), verificata ogni giorno, scartando le ritrasmissioni di terzi: server su indirizzi IP o porte non standard, e server che trasmettono canali di emittenti diverse (per esempio La7 e RAI insieme), perché un server ufficiale trasmette solo i canali della propria emittente. Se un canale supera la prova ma Jellyfin non lo riproduce, il problema è in Jellyfin (User-Agent, FFmpeg) e non nel link.
 
 Il supporto di yt-dlp è confermato per la diretta di TV8; per Cielo e Sky TG24 non è verificato. Se restano "Not updated", per quei canali c'è il digitale terrestre (canali 26 e 50).
 
@@ -196,10 +203,10 @@ Quattro canali bastano a capire se tutta la configurazione funziona; provali in 
 
 | Ordine | Canale | Cosa verifica | Se non parte |
 | --- | --- | --- | --- |
-| 1 | La7 | Il sintonizzatore legge la playlist | Apri l'URL raw nel browser e controlla che il repository sia pubblico (Passo 1b) |
-| 2 | NOVE | I flussi HLS normali | Il link è cambiato: rigenera e ripubblica la playlist |
+| 1 | La7 | Il sintonizzatore legge la playlist | Guarda nel riepilogo del Passo 1 se il link risulta funzionante o sostituito; poi apri l'URL raw nel browser e controlla che il repository sia pubblico (Passo 1b) |
+| 2 | NOVE | I flussi HLS normali | Rigenera e ripubblica la playlist: il generatore sostituisce i link che non rispondono |
 | 3 | Canale 5 | Flussi DASH Mediaset e User-Agent | Controlla lo User-Agent, poi passa al Passo 6 |
-| 4 | Rai 1 | Relinker RAI, IP italiano e User-Agent | Verifica l'IP del server, poi passa al Passo 6 |
+| 4 | Rai 1 | Relinker RAI, IP italiano e User-Agent | Rigenera la playlist; se resta tra i "Not working", verifica l'IP del server, poi passa al Passo 6 |
 
 Per capire se il problema RAI è l'IP, lancia questo comando dal server:
 
