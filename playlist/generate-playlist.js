@@ -6,6 +6,8 @@
 //      relinker link, or an iptv-org link that is not a third-party rebroadcast
 //   4. writes the result to the output folder, keeping the upstream file name
 // Usage: node playlist/generate-playlist.js [output-folder]   (default: public)
+//        node playlist/generate-playlist.js --diagnose      (tests the sources
+//        for La7, La7d, TV8, Cielo and Sky TG24; writes nothing)
 // Env: SOURCE_URL, ALT_SOURCE_URL, USER_AGENT, CHECK_STREAMS
 // Needs Node.js 18+ (built-in fetch) and yt-dlp; run it from an Italian IP.
 const fs = require('fs');
@@ -92,12 +94,12 @@ function fetchNewLink(page) {
 }
 
 // opens a stream link as Jellyfin would: null if it works, else the reason
-async function checkStream(url) {
+async function checkStream(url, extraHeaders = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT);
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT },
+      headers: { 'User-Agent': USER_AGENT, ...extraHeaders },
       redirect: 'follow',
       signal: controller.signal,
     });
@@ -197,8 +199,141 @@ function unofficialHosts(channels, alternatives) {
   return bad;
 }
 
+// ---------------------------------------------------------------------------
+// --diagnose: tries the possible official sources for La7, La7d, TV8, Cielo
+// and Sky TG24 and prints what works. Nothing is written.
+
+const DIAG_TIMEOUT = 15000;
+const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+  + '(KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+const LA7_HEADERS = { Referer: 'https://www.la7.it/', Origin: 'https://www.la7.it' };
+
+// Sky live ids used by Sky's own APIs
+const SKY_LIVE = [
+  { name: 'TV8', id: 7, tokenless: 'OFF/11223/tv8web' },
+  { name: 'Cielo', id: 2, tokenless: 'OFF/11219/cieloweb' },
+  { name: 'Sky TG24', id: 1, tokenless: 'OFF/12221/web' },
+];
+const SKY_APIS = [
+  { label: "Sky apps' API (video.sky.it)", url: 'https://video.sky.it/be/getLivestream?id=', ua: 'okhttp/3.3.0' },
+  { label: "Sky web API (apid.sky.it, used by yt-dlp)", url: 'https://apid.sky.it/vdp/v1/getLivestream?id=', ua: BROWSER_UA },
+];
+const LA7_PAGES = ['https://www.la7.it/dirette-tv'];
+const LA7_KNOWN = [
+  'https://d15umi5iaezxgx.cloudfront.net/LA7/CLN/HLS-B/Live_1280x720_.m3u8',
+  'https://d15umi5iaezxgx.cloudfront.net/LA7D/CLN/HLS-B/Live_1280x720_.m3u8',
+  'https://d15umi5iaezxgx.cloudfront.net/LA7D/CLN/HLS/Live.m3u8',
+];
+
+async function fetchText(url, headers) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DIAG_TIMEOUT);
+  try {
+    const res = await fetch(url, { headers, redirect: 'follow', signal: controller.signal });
+    return { status: res.status, text: await res.text() };
+  } catch (err) {
+    const reason = err.name === 'AbortError' ? 'timeout'
+      : (err.cause && (err.cause.code || err.cause.message)) || err.message;
+    return { status: 0, error: reason, text: '' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// "exp=1765449000" in a tokenised link -> when it expires and how far away
+function tokenInfo(url) {
+  const exp = Number((url.match(/exp=(\d{9,})/) || [])[1]);
+  if (!exp) return 'no token in the link';
+  const start = Number((url.match(/st=(\d{9,})/) || [])[1]);
+  const hoursLeft = ((exp * 1000 - Date.now()) / 3600000).toFixed(1);
+  const lifetime = start ? `, valid ${((exp - start) / 3600).toFixed(1)} h in total` : '';
+  const when = new Date(exp * 1000).toISOString().replace('T', ' ').slice(0, 16);
+  return `token expires ${when} UTC (in ${hoursLeft} h${lifetime})`;
+}
+
+// first URL-looking string in a JSON answer whose key mentions a stream
+function streamUrlFromJson(text) {
+  try {
+    const data = JSON.parse(text);
+    const found = [];
+    (function walk(node, key) {
+      if (typeof node === 'string' && /^https?:\/\//.test(node)
+        && /(stream|url|hls|m3u8|manifest)/i.test(key + node)) found.push(node);
+      else if (node && typeof node === 'object') {
+        for (const [k, v] of Object.entries(node)) walk(v, k);
+      }
+    })(data, '');
+    const keys = data && typeof data === 'object' ? Object.keys(data).join(', ') : '';
+    return { url: found.find((u) => /m3u8|mpd/i.test(u)) || found[0], keys };
+  } catch {
+    return { url: null, keys: 'not JSON' };
+  }
+}
+
+async function diagnose() {
+  const out = (line = '') => console.log(line);
+  const result = (error) => (error ? `NO (${error})` : 'OK');
+  out(`Diagnosis with the Jellyfin User-Agent "${USER_AGENT}". Nothing is written.`);
+  out('Copy everything below and send it back.');
+
+  for (const api of SKY_APIS) {
+    out();
+    out(`== ${api.label}`);
+    for (const ch of SKY_LIVE) {
+      const res = await fetchText(api.url + ch.id, { 'User-Agent': api.ua, Accept: 'application/json' });
+      if (res.status !== 200) {
+        out(`  ${ch.name.padEnd(9)} API: ${res.error || `HTTP ${res.status}`}`);
+        continue;
+      }
+      const { url, keys } = streamUrlFromJson(res.text);
+      if (!url) {
+        out(`  ${ch.name.padEnd(9)} API: HTTP 200, no stream link in the answer (fields: ${keys})`);
+        continue;
+      }
+      out(`  ${ch.name.padEnd(9)} API: HTTP 200, link ${result(await checkStream(url))}, ${tokenInfo(url)}`);
+      out(`            ${url}`);
+    }
+  }
+
+  out();
+  out('== Sky links without token');
+  for (const ch of SKY_LIVE) {
+    const url = `https://hlslive-web-gcdn-skycdn-it.akamaized.net/${ch.tokenless}/master.m3u8`;
+    out(`  ${ch.name.padEnd(9)} ${result(await checkStream(url))}  ${url}`);
+  }
+
+  out();
+  out('== La7 links found on la7.it');
+  const la7Found = new Set();
+  for (const page of LA7_PAGES) {
+    const res = await fetchText(page, { 'User-Agent': BROWSER_UA });
+    if (res.status !== 200) {
+      out(`  ${page}: ${res.error || `HTTP ${res.status}`}`);
+      continue;
+    }
+    const text = res.text.replace(/\\\//g, '/');
+    for (const m of text.matchAll(/https?:\/\/[^"'\s<>\\]+?\.(?:m3u8|mpd)(?:\?[^"'\s<>\\]*)?/gi)) {
+      la7Found.add(m[0]);
+    }
+    out(`  ${page}: HTTP 200, ${la7Found.size} stream link(s) in the page`);
+  }
+
+  out();
+  out('== La7 / La7d links (without and with the la7.it Referer)');
+  for (const url of [...la7Found, ...LA7_KNOWN.filter((u) => !la7Found.has(u))]) {
+    const plain = await checkStream(url);
+    const withReferer = await checkStream(url, LA7_HEADERS);
+    out(`  plain: ${result(plain).padEnd(22)} with Referer: ${result(withReferer)}`);
+    out(`    ${url}`);
+  }
+  out();
+  out('Diagnosis done.');
+}
+
 async function main() {
-  const folder = process.argv[2] || 'public';
+  const args = process.argv.slice(2);
+  if (args.includes('--diagnose')) return diagnose();
+  const folder = args.find((a) => !a.startsWith('--')) || 'public';
   const file = path.join(folder, FILE_NAME);
 
   // yt-dlp must be installed before anything is touched

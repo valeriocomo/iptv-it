@@ -41,6 +41,14 @@ Nothing runs automatically: you start it by hand, then commit and push the file 
 docker compose run --rm playlist-generator
 ```
 
+To test the possible official sources for La7, La7d, TV8, Cielo and Sky TG24 without writing anything:
+
+```bash
+docker compose run --rm playlist-generator --diagnose
+```
+
+It tries Sky's live APIs (and how long their tokens last), Sky's links without token, the stream links found on la7.it and known La7 links, with and without the la7.it Referer, and prints what works.
+
 On Linux the file is written as user `1000:1000`. If `id -u` returns a different number, run:
 
 ```bash
