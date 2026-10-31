@@ -1,7 +1,7 @@
 # Run with: docker compose run --rm playlist-generator
 services:
   playlist-generator:
-    build: ./playlist
+    build: ./packages/playlist
     image: playlist-generator
     # write the file as your user, not as root (Linux).
     # Default 1000:1000; otherwise run:
@@ -19,7 +19,7 @@ services:
       - .:/data
 
   epg-generator:
-    build: ./epg
+    build: ./packages/epg
     image: epg-generator
     user: "${PUID:-1000}:${PGID:-1000}"
     environment:

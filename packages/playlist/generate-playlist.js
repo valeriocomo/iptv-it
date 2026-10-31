@@ -1,13 +1,14 @@
-// playlist/generate-playlist.js: builds the Italian IPTV playlist to publish on GitHub.
+// generate-playlist.js: builds the Italian IPTV playlist to publish on GitHub.
 //   1. downloads the upstream playlist (Tundrak/IPTV-Italia)
 //   2. refreshes the TV8, Cielo and Sky TG24 links with yt-dlp
 //   3. checks every link with the User-Agent Jellyfin uses; a link that does
 //      not answer is replaced with a working official one: the fixed RAI
 //      relinker link, or an iptv-org link that is not a third-party rebroadcast
 //   4. writes the result to the output folder, keeping the upstream file name
-// Usage: node playlist/generate-playlist.js [output-folder]   (default: public)
-//        node playlist/generate-playlist.js --diagnose      (tests the sources
-//        for La7, La7d, TV8, Cielo and Sky TG24; writes nothing)
+// Usage: node packages/playlist/generate-playlist.js [output-folder]   (default: public)
+//        node packages/playlist/generate-playlist.js --diagnose      (tests the
+//        sources for La7, La7d, TV8, Cielo and Sky TG24; writes nothing)
+//        or, from the repository root: npm run start|diagnose -w @iptv-it/playlist
 // Env: SOURCE_URL, ALT_SOURCE_URL, USER_AGENT, CHECK_STREAMS
 // Needs Node.js 18+ (built-in fetch) and yt-dlp; run it from an Italian IP.
 const fs = require('fs');

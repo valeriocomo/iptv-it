@@ -35,7 +35,7 @@ Lancialo da una rete italiana, possibilmente la stessa del server Jellyfin: le d
 git clone https://github.com/valeriocomo/iptv-it.git
 ```
 
-**B. Prepara il generatore** (una volta sola). Metti nel clone del repository la cartella `playlist` (`Dockerfile`, `entrypoint.sh`, `generate-playlist.js`), il file `compose.yml` e `README.md`. Il `compose.yml` monta la sua stessa cartella e la playlist viene scritta in `public/iptvitaplus.m3u`, con lo stesso nome del file di Tundrak; la cartella `public` viene creata se manca. Poi costruisci l'immagine:
+**B. Prepara il generatore** (una volta sola). Metti nel clone del repository la cartella `packages/playlist` (`Dockerfile`, `entrypoint.sh`, `generate-playlist.js`), il file `compose.yml` e `README.md`. Il `compose.yml` monta la sua stessa cartella e la playlist viene scritta in `public/iptvitaplus.m3u`, con lo stesso nome del file di Tundrak; la cartella `public` viene creata se manca. Poi costruisci l'immagine:
 
 ```bash
 docker compose build
@@ -71,7 +71,7 @@ Su Linux il container scrive il file come utente 1000. Se `id -u` ti dà un nume
 PUID=$(id -u) PGID=$(id -g) docker compose run --rm playlist-generator
 ```
 
-Senza Docker serve Node.js 18 o successivo e yt-dlp (`pip install -U yt-dlp`); poi lanci `node playlist/generate-playlist.js iptv-it/public`.
+Senza Docker serve Node.js 18 o successivo e yt-dlp (`pip install -U yt-dlp`); poi, dalla cartella del clone, lanci `node packages/playlist/generate-playlist.js public` (oppure `npm run start -w @iptv-it/playlist`).
 
 ## Passo 1b — Pubblica la playlist su GitHub
 
@@ -125,7 +125,7 @@ Il generatore della guida legge la playlist del Passo 1, abbina ogni canale a un
 
 Nella guida ogni canale ha lo stesso ID della playlist (`Rai1.it`, `Canale5.it`…), quindi Jellyfin li abbina da solo. L'abbinamento serve perché iptv-org oggi usa ID diversi, come `Rai1.it@SD`.
 
-**A. Prepara il generatore** (una volta sola, solo per usarlo sul tuo computer). Il generatore è nella cartella `epg` del repository (`Dockerfile`, `entrypoint.sh`, `generate-epg.js`) ed è il servizio `epg-generator` del `compose.yml`. Costruisci l'immagine:
+**A. Prepara il generatore** (una volta sola, solo per usarlo sul tuo computer). Il generatore è nella cartella `packages/epg` del repository (`Dockerfile`, `entrypoint.sh`, `generate-epg.js`) ed è il servizio `epg-generator` del `compose.yml`. Costruisci l'immagine:
 
 ```bash
 docker compose build epg-generator
@@ -137,6 +137,8 @@ docker compose build epg-generator
 docker compose run --rm playlist-generator
 docker compose run --rm epg-generator
 ```
+
+In alternativa, con Node.js installato: `npm run start -w @iptv-it/epg`. Lo script ricostruisce l'immagine, poi lancia lo stesso servizio con il tuo utente.
 
 Su Linux, se `id -u` non restituisce 1000, anteponi `PUID=$(id -u) PGID=$(id -g)` a entrambi i comandi, come al Passo 1.
 
@@ -156,7 +158,7 @@ Per controllare l'abbinamento senza scaricare nulla:
 docker compose run --rm epg-generator --match-only
 ```
 
-**C. Pubblicala.** Lo fa per te la GitHub Action del repository (`.github/workflows/epg.yml`): ogni 6 ore, e ogni volta che fai push di una modifica alla playlist, a `compose.yml` o alla cartella `epg`, rigenera la guida sui server di GitHub e fa il commit di `public/guide.xml` solo se è cambiato. Le fonti forniscono 2 o 3 giorni di programmi, quindi senza questi aggiornamenti in Jellyfin la guida resterebbe vuota.
+**C. Pubblicala.** Lo fa per te la GitHub Action del repository (`.github/workflows/epg.yml`): ogni 6 ore, e ogni volta che fai push di una modifica alla playlist, a `compose.yml` o alla cartella `packages/epg`, rigenera la guida sui server di GitHub e fa il commit di `public/guide.xml` solo se è cambiato. Le fonti forniscono 2 o 3 giorni di programmi, quindi senza questi aggiornamenti in Jellyfin la guida resterebbe vuota.
 
 Non fare il commit della guida generata sul tuo computer: scartala con `git checkout public/guide.xml`, tanto l'action la sostituirebbe al giro successivo. Per aggiornare la guida subito, apri la scheda **Actions** del repository → **Update TV guide** → **Run workflow**.
 

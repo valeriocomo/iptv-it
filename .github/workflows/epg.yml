@@ -15,7 +15,7 @@ on:
     paths:
       - public/iptvitaplus.m3u
       - compose.yml
-      - epg/**
+      - packages/epg/**
       - .github/workflows/epg.yml
 
 permissions:

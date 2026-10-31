@@ -1,0 +1,13 @@
+{
+  "name": "@iptv-it/playlist",
+  "private": true,
+  "description": "Builds public/iptvitaplus.m3u: the upstream playlist with refreshed Sky links. Needs yt-dlp and an Italian IP.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node generate-playlist.js ../../public",
+    "diagnose": "node generate-playlist.js --diagnose"
+  }
+}

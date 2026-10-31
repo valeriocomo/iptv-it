@@ -1,6 +1,10 @@
 {
+  "name": "iptv-it",
   "private": true,
-  "description": "Development tools only: the scripts have no runtime dependencies.",
+  "description": "Development tools only: the generators in packages/ have no runtime dependencies.",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "lint": "eslint .",
     "lint:actions": "actionlint"

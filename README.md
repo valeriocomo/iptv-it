@@ -21,16 +21,18 @@ The playlist is not generated automatically: you start it by hand, then commit a
 
 | File | Purpose |
 | --- | --- |
-| `playlist/generate-playlist.js` | Downloads the upstream playlist, refreshes the Sky links, writes the output |
-| `playlist/entrypoint.sh` | Updates yt-dlp, then runs `generate-playlist.js` once |
-| `playlist/Dockerfile` | Node.js 26 on Alpine, with Python and yt-dlp |
+| `packages/playlist/generate-playlist.js` | Downloads the upstream playlist, refreshes the Sky links, writes the output |
+| `packages/playlist/entrypoint.sh` | Updates yt-dlp, then runs `generate-playlist.js` once |
+| `packages/playlist/Dockerfile` | Node.js 26 on Alpine, with Python and yt-dlp |
+| `packages/epg/` | The TV guide generator (`epg-generator` service), see [Automatic TV guide update](#automatic-tv-guide-update) |
 | `compose.yml` | Mounts your repository clone and runs the container |
 | `.github/workflows/epg.yml` | Regenerates `public/guide.xml` on GitHub every 6 hours |
+| `package.json` | npm workspace (`packages/*`) and ESLint, for development only (see [Development](#development-dev-container)) |
 | `.devcontainer/devcontainer.json` | Development container for VS Code (see [Development](#development-dev-container)) |
 
 ## Setup
 
-1. Put these files (including the `playlist/` folder) in your repository clone. `compose.yml` mounts its own folder (`.`) as `/data`, so the playlist is written to `public/` inside it (the folder is created if missing). If you keep the files elsewhere, replace `.` with the absolute path of your clone.
+1. Put these files (including the `packages/playlist/` folder) in your repository clone. `compose.yml` mounts its own folder (`.`) as `/data`, so the playlist is written to `public/` inside it (the folder is created if missing). If you keep the files elsewhere, replace `.` with the absolute path of your clone.
 2. Build the image:
 
    ```bash
@@ -89,10 +91,10 @@ If `git commit` says "nothing to commit", the playlist did not change. `git pull
 
 ## Automatic TV guide update
 
-The workflow `.github/workflows/epg.yml` runs the `epg-generator` service (folder `epg/`) on GitHub's servers:
+The workflow `.github/workflows/epg.yml` runs the `epg-generator` service (folder `packages/epg/`) on GitHub's servers:
 
 - every 6 hours (at minute 15, UTC);
-- when you push to `main` a change to `public/iptvitaplus.m3u`, `compose.yml` or `epg/`;
+- when you push to `main` a change to `public/iptvitaplus.m3u`, `compose.yml` or `packages/epg/`;
 - by hand, from **Actions → Update TV guide → Run workflow**.
 
 It commits `public/guide.xml` as `github-actions[bot]` only if the file differs from the one in the repository. If the new guide has less than half the programmes of the current one, it commits nothing and the run fails; run it by hand with **force** ticked to commit it anyway. GitHub's servers are not in Italy, so a source may return fewer programmes than from your computer.
@@ -113,7 +115,7 @@ GitHub caches raw files for about 5 minutes, so changes may take a few minutes t
 With Node.js 18+ and yt-dlp installed (`pip install -U yt-dlp`):
 
 ```bash
-node playlist/generate-playlist.js /path/to/your/repo/public
+node packages/playlist/generate-playlist.js /path/to/your/repo/public
 ```
 
 ## Development (Dev Container)
@@ -123,8 +125,13 @@ Open the folder in VS Code and run **Dev Containers: Reopen in Container**. The 
 ```bash
 npm run lint                                  # ESLint on the scripts
 actionlint                                    # check the GitHub workflows
-node playlist/generate-playlist.js public     # run the generator without Docker
+npm run start -w @iptv-it/playlist            # run the generator without Docker (writes public/)
+npm run diagnose -w @iptv-it/playlist         # same as --diagnose
+npm run start -w @iptv-it/epg                 # build the guide in Docker (writes public/guide.xml)
+npm run match-only -w @iptv-it/epg            # same as --match-only
 ```
+
+The generators are npm workspaces in `packages/` (`@iptv-it/playlist` and `@iptv-it/epg`), with no runtime dependencies: the root `package.json` only adds ESLint. npm runs a workspace script from the package folder, so `npm run start -w @iptv-it/playlist` writes to `../../public`, the `public/` folder of the repository. `-w packages/playlist` works too. The `@iptv-it/epg` scripts run the `epg-generator` service instead, because the generator needs the iptv-org/epg copy that only its Docker image contains. They rebuild the image first (fast, thanks to the cache), so they always use the current `generate-epg.js`.
 
 Sky streams are still geo-blocked: a real run needs an Italian IP.
 

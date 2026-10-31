@@ -1,0 +1,10 @@
+{
+  "name": "@iptv-it/epg",
+  "private": true,
+  "description": "Builds public/guide.xml for the playlist channels with iptv-org/epg. Runs only in Docker (service epg-generator).",
+  "license": "MIT",
+  "scripts": {
+    "start": "PUID=$(id -u) PGID=$(id -g) docker compose -f ../../compose.yml run --rm --build epg-generator",
+    "match-only": "npm start -- --match-only"
+  }
+}

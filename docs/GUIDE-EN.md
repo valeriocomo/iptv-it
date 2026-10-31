@@ -35,7 +35,7 @@ Run it from an Italian network, ideally the same one as your Jellyfin server: Sk
 git clone https://github.com/valeriocomo/iptv-it.git
 ```
 
-**B. Set up the generator** (once). Put the `playlist` folder (`Dockerfile`, `entrypoint.sh`, `generate-playlist.js`), the file `compose.yml` and `README.md` in the repository clone. `compose.yml` mounts its own folder, and the playlist is written to `public/iptvitaplus.m3u`, with the same name as Tundrak's file; the `public` folder is created if missing. Then build the image:
+**B. Set up the generator** (once). Put the `packages/playlist` folder (`Dockerfile`, `entrypoint.sh`, `generate-playlist.js`), the file `compose.yml` and `README.md` in the repository clone. `compose.yml` mounts its own folder, and the playlist is written to `public/iptvitaplus.m3u`, with the same name as Tundrak's file; the `public` folder is created if missing. Then build the image:
 
 ```bash
 docker compose build
@@ -71,7 +71,7 @@ On Linux the container writes the file as user 1000. If `id -u` returns a differ
 PUID=$(id -u) PGID=$(id -g) docker compose run --rm playlist-generator
 ```
 
-Without Docker you need Node.js 18 or later and yt-dlp (`pip install -U yt-dlp`); then run `node playlist/generate-playlist.js iptv-it/public`.
+Without Docker you need Node.js 18 or later and yt-dlp (`pip install -U yt-dlp`); then, from the clone folder, run `node packages/playlist/generate-playlist.js public` (or `npm run start -w @iptv-it/playlist`).
 
 ## Step 1b — Publish the playlist on GitHub
 
@@ -125,7 +125,7 @@ The guide generator reads the playlist from Step 1, matches each channel to an I
 
 In the guide every channel has the same ID as in the playlist (`Rai1.it`, `Canale5.it`…), so Jellyfin matches them on its own. The matching is needed because iptv-org now uses different IDs, such as `Rai1.it@SD`.
 
-**A. Set up the generator** (once, only to run it on your computer). The generator lives in the repository's `epg` folder (`Dockerfile`, `entrypoint.sh`, `generate-epg.js`) and is the `epg-generator` service in `compose.yml`. Build the image:
+**A. Set up the generator** (once, only to run it on your computer). The generator lives in the repository's `packages/epg` folder (`Dockerfile`, `entrypoint.sh`, `generate-epg.js`) and is the `epg-generator` service in `compose.yml`. Build the image:
 
 ```bash
 docker compose build epg-generator
@@ -137,6 +137,8 @@ docker compose build epg-generator
 docker compose run --rm playlist-generator
 docker compose run --rm epg-generator
 ```
+
+Alternatively, with Node.js installed: `npm run start -w @iptv-it/epg`. The script rebuilds the image, then runs the same service as your user.
 
 On Linux, if `id -u` does not return 1000, prefix both commands with `PUID=$(id -u) PGID=$(id -g)`, as in Step 1.
 
@@ -156,7 +158,7 @@ To check the matching without downloading anything:
 docker compose run --rm epg-generator --match-only
 ```
 
-**C. Publish it.** The repository's GitHub Action (`.github/workflows/epg.yml`) does it for you: every 6 hours, and whenever you push a change to the playlist, `compose.yml` or the `epg` folder, it regenerates the guide on GitHub's servers and commits `public/guide.xml` only if it changed. The sources provide 2 or 3 days of programmes, so without these updates the guide would run empty in Jellyfin.
+**C. Publish it.** The repository's GitHub Action (`.github/workflows/epg.yml`) does it for you: every 6 hours, and whenever you push a change to the playlist, `compose.yml` or the `packages/epg` folder, it regenerates the guide on GitHub's servers and commits `public/guide.xml` only if it changed. The sources provide 2 or 3 days of programmes, so without these updates the guide would run empty in Jellyfin.
 
 Do not commit the guide generated on your computer: discard it with `git checkout public/guide.xml`, since the action would replace it at its next run anyway. To update the guide right away, open the repository's **Actions** tab → **Update TV guide** → **Run workflow**.
 
