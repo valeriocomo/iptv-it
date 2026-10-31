@@ -1,0 +1,43 @@
+// Development container: Node 26 (as in the playlist/epg images), Docker for
+// `docker compose`, yt-dlp to run generate-playlist.js directly, and the
+// linters for JavaScript, Dockerfiles, shell scripts and GitHub workflows.
+{
+  "name": "iptv-it",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:26-trixie",
+  "features": {
+    // the daemon runs inside the container, so the `.:/data` bind mount in
+    // compose.yml resolves to the workspace; moby has no trixie packages
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": false
+    },
+    "ghcr.io/devcontainers-extra/features/yt-dlp:2": {},
+    "ghcr.io/devcontainers-extra/features/actionlint:1": {},
+    // used by actionlint for the `run:` scripts, and for the entrypoints
+    "ghcr.io/devcontainers-extra/features/shellcheck:1": {},
+    "ghcr.io/devcontainers-extra/features/claude-code:2": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  // taken from the host environment; empty if not set there
+  "remoteEnv": {
+    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
+    "GH_TOKEN": "${localEnv:GH_TOKEN}"
+  },
+  "postCreateCommand": "npm install",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "docker.docker",
+        "ms-azuretools.vscode-containers",
+        "dbaeumer.vscode-eslint",
+        "arahata.linter-actionlint",
+        "github.vscode-github-actions",
+        "timonwong.shellcheck"
+      ],
+      "settings": {
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        }
+      }
+    }
+  }
+}

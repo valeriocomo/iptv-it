@@ -26,6 +26,7 @@ The playlist is not generated automatically: you start it by hand, then commit a
 | `playlist/Dockerfile` | Node.js 26 on Alpine, with Python and yt-dlp |
 | `compose.yml` | Mounts your repository clone and runs the container |
 | `.github/workflows/epg.yml` | Regenerates `public/guide.xml` on GitHub every 6 hours |
+| `.devcontainer/devcontainer.json` | Development container for VS Code (see [Development](#development-dev-container)) |
 
 ## Setup
 
@@ -114,6 +115,18 @@ With Node.js 18+ and yt-dlp installed (`pip install -U yt-dlp`):
 ```bash
 node playlist/generate-playlist.js /path/to/your/repo/public
 ```
+
+## Development (Dev Container)
+
+Open the folder in VS Code and run **Dev Containers: Reopen in Container**. The container has Node.js 26, Docker (to run the `docker compose` commands above as they are), yt-dlp, actionlint, shellcheck, Claude Code and the GitHub CLI, plus the extensions for Dockerfiles, JavaScript (ESLint) and GitHub workflows. To log in to Claude Code and `gh` automatically, set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) and `GH_TOKEN` on your computer before opening the container: they are copied in, and left empty if not set. Inside it:
+
+```bash
+npm run lint                                  # ESLint on the scripts
+actionlint                                    # check the GitHub workflows
+node playlist/generate-playlist.js public     # run the generator without Docker
+```
+
+Sky streams are still geo-blocked: a real run needs an Italian IP.
 
 ## Configuration
 

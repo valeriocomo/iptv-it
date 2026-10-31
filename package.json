@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "description": "Development tools only: the scripts have no runtime dependencies.",
+  "scripts": {
+    "lint": "eslint .",
+    "lint:actions": "actionlint"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "globals": "^17.13.0"
+  }
+}

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A manual, run-once tool that builds an Italian free-to-air IPTV playlist (`iptvitaplus.m3u`, written to `public/`) for Jellyfin. It downloads the upstream playlist (Tundrak/IPTV-Italia `iptvitaplus.m3u`), replaces the TV8, Cielo and Sky TG24 links with fresh ones from yt-dlp (Sky links carry expiring tokens), and writes the result into a separate, locally cloned public GitHub repo. The user commits and pushes that file by hand; only the guide (`public/guide.xml`) is regenerated and committed automatically, by GitHub Actions. There is no build step, no tests, no linter, and no `package.json`: plain Node.js with no dependencies.
+A manual, run-once tool that builds an Italian free-to-air IPTV playlist (`iptvitaplus.m3u`, written to `public/`) for Jellyfin. It downloads the upstream playlist (Tundrak/IPTV-Italia `iptvitaplus.m3u`), replaces the TV8, Cielo and Sky TG24 links with fresh ones from yt-dlp (Sky links carry expiring tokens), and writes the result into a separate, locally cloned public GitHub repo. The user commits and pushes that file by hand; only the guide (`public/guide.xml`) is regenerated and committed automatically, by GitHub Actions. There is no build step and no tests: plain Node.js with no runtime dependencies. `package.json` only holds ESLint as a dev dependency (`eslint.config.mjs`, CommonJS + Node globals); the Docker images copy just their own `.js`/`.sh` files.
 
 ## Commands
 
@@ -12,7 +12,11 @@ A manual, run-once tool that builds an Italian free-to-air IPTV playlist (`iptvi
 docker compose build                              # build the image
 docker compose run --rm playlist-generator        # generate once (set PUID/PGID if your uid is not 1000)
 node playlist/generate-playlist.js /path/to/repo/public          # without Docker (Node 18+ and yt-dlp required)
+npm run lint                                      # ESLint on the scripts (after npm install)
+actionlint                                        # check .github/workflows (uses shellcheck for run: scripts)
 ```
+
+`.devcontainer/devcontainer.json` provides all of the above: Node 26, Docker-in-Docker (so the `.:/data` bind mount in `compose.yml` works unchanged), yt-dlp, actionlint, shellcheck, Claude Code, the GitHub CLI, and the VS Code extensions for Dockerfiles, ESLint and workflows. Its `postCreateCommand` runs `npm install`. `CLAUDE_CODE_OAUTH_TOKEN` and `GH_TOKEN` are passed in from the host environment (`remoteEnv`).
 
 `compose.yml` mounts its own folder (`.`) as `/data`, so the output goes to `public/` there; use an absolute path if the files live outside the clone. Sky streams are geo-blocked, so a real run needs an Italian IP.
 
