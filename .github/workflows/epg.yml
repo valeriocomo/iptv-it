@@ -1,0 +1,65 @@
+# Regenerates public/guide.xml every 6 hours and commits it only when it changed.
+name: Update TV guide
+
+on:
+  schedule:
+    - cron: '15 */6 * * *'   # UTC; off the hour, when GitHub delays runs less
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Commit even if the guide has less than half the programmes of the current one
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - public/iptvitaplus.m3u
+      - compose.yml
+      - epg/**
+      - .github/workflows/epg.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: epg
+  cancel-in-progress: false
+
+jobs:
+  epg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the image
+        run: docker compose build epg-generator
+
+      - name: Generate the guide
+        # -T: no TTY on the runner; PUID/PGID: the runner user is not 1000
+        run: PUID=$(id -u) PGID=$(id -g) docker compose run --rm -T epg-generator
+
+      - name: Check the programme count
+        if: ${{ !inputs.force }}
+        run: |
+          # 0 when the repository has no guide yet (grep fails under pipefail)
+          old=$(git show HEAD:public/guide.xml 2>/dev/null | grep -o '<programme ' | wc -l) || true
+          new=$(grep -o '<programme ' public/guide.xml | wc -l)
+          echo "Programmes: $old in the repository, $new generated"
+          if [ "$old" -gt 0 ] && [ $((new * 2)) -lt "$old" ]; then
+            echo "::error::The new guide has less than half the programmes of the current one; not committed. Run the workflow by hand with 'force' to commit it anyway."
+            exit 1
+          fi
+
+      - name: Commit if changed
+        run: |
+          git add public/guide.xml
+          if git diff --cached --quiet; then
+            echo "The guide did not change"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: update TV guide'
+          git pull --rebase
+          git push

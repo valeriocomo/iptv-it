@@ -20,7 +20,7 @@ Requirements:
 - Jellyfin 10.9 or later (option names vary slightly between versions)
 - A server that reaches the internet with an Italian IP, required for the RAI channels
 - A public GitHub repository and, on your computer, Docker (or Node.js 18+ and yt-dlp) to generate the playlist in Step 1
-- Docker on your computer to generate the TV guide in Step 3 too
+- Optional: Docker on your computer to check the TV guide in Step 3 (GitHub Actions generates it for you)
 - Optional: Docker for Threadfin in Step 6
 
 ## Step 1 — Generate the playlist on your computer
@@ -81,10 +81,11 @@ After each run you push the file to the repository, and Jellyfin reads it from i
 cd iptv-it
 git add public/iptvitaplus.m3u
 git commit -m "Update playlist"
+git pull --rebase
 git push
 ```
 
-If `git commit` replies "nothing to commit", the playlist has not changed and there is nothing to publish.
+If `git commit` replies "nothing to commit", the playlist has not changed and there is nothing to publish. `git pull --rebase` first fetches the guide updates that GitHub Actions commits to the repository (Step 3); without it the push may be refused.
 
 The address to give Jellyfin is the file's raw URL:
 
@@ -118,19 +119,19 @@ The key setting is the User-Agent `HbbTV/1.6.1`: without it, RAI and Mediaset re
 
 Jellyfin does not reliably apply the per-channel `#EXTVLCOPT` lines, which is why the User-Agent goes in the tuner settings. If your version has no User agent field, go straight to Step 6.
 
-## Step 3 — Generate the TV guide on your computer
+## Step 3 — Generate the TV guide
 
-The guide generator reads the playlist from Step 1, matches each channel to an Italian iptv-org/epg source and writes `public/guide.xml`, which you publish on GitHub just like the playlist. It runs in Docker, like the playlist generator.
+The guide generator reads the playlist from Step 1, matches each channel to an Italian iptv-org/epg source and writes `public/guide.xml`. A GitHub Action runs it on GitHub's servers and publishes the guide on its own (C); on your computer you run it in Docker only to check the result.
 
 In the guide every channel has the same ID as in the playlist (`Rai1.it`, `Canale5.it`…), so Jellyfin matches them on its own. The matching is needed because iptv-org now uses different IDs, such as `Rai1.it@SD`.
 
-**A. Set up the generator** (once). The generator lives in the repository's `epg` folder (`Dockerfile`, `entrypoint.sh`, `generate-epg.js`) and is the `epg-generator` service in `compose.yml`. Build the image:
+**A. Set up the generator** (once, only to run it on your computer). The generator lives in the repository's `epg` folder (`Dockerfile`, `entrypoint.sh`, `generate-epg.js`) and is the `epg-generator` service in `compose.yml`. Build the image:
 
 ```bash
 docker compose build epg-generator
 ```
 
-**B. Generate the guide**, always after the playlist:
+**B. Generate the guide on your computer** (optional, to check it), always after the playlist:
 
 ```bash
 docker compose run --rm playlist-generator
@@ -155,16 +156,11 @@ To check the matching without downloading anything:
 docker compose run --rm epg-generator --match-only
 ```
 
-**C. Publish it:**
+**C. Publish it.** The repository's GitHub Action (`.github/workflows/epg.yml`) does it for you: every 6 hours, and whenever you push a change to the playlist, `compose.yml` or the `epg` folder, it regenerates the guide on GitHub's servers and commits `public/guide.xml` only if it changed. The sources provide 2 or 3 days of programmes, so without these updates the guide would run empty in Jellyfin.
 
-```bash
-cd iptv-it
-git add public/guide.xml
-git commit -m "Update TV guide"
-git push
-```
+Do not commit the guide generated on your computer: discard it with `git checkout public/guide.xml`, since the action would replace it at its next run anyway. To update the guide right away, open the repository's **Actions** tab → **Update TV guide** → **Run workflow**.
 
-The sources provide 2 or 3 days of programmes: regenerate and republish the guide at least every 2 days, or it will run empty in Jellyfin.
+If the new guide has less than half the programmes of the one in the repository (for example because a source answers worse from GitHub's servers, which are not in Italy), the action does not commit it and the run fails with an error in the **Actions** tab. To publish it anyway, start it by hand with **force** ticked.
 
 **D. Add it to Jellyfin:**
 
@@ -172,7 +168,7 @@ The sources provide 2 or 3 days of programmes: regenerate and republish the guid
 2. In **File or URL** enter `https://raw.githubusercontent.com/valeriocomo/iptv-it/refs/heads/main/public/guide.xml`.
 3. Enable the provider for the tuner created in Step 2 and save.
 
-To change the behaviour, add the variables to the `environment` section of the `epg-generator` service in `compose.yml` (`DAYS` and `MAX_CONNECTIONS` are already there, commented out):
+To change the behaviour, add the variables to the `environment` section of the `epg-generator` service in `compose.yml` (`DAYS` and `MAX_CONNECTIONS` are already there, commented out). The action uses the same `compose.yml`, so once pushed the changes apply to it too:
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -268,6 +264,7 @@ The exact names of Threadfin's menu items may vary slightly between versions.
 | Only Mediaset channels do not play | Jellyfin's FFmpeg struggles with DASH streams | Threadfin with the FFmpeg buffer (Step 6) |
 | Channels start, then freeze after a few seconds | Irregular stream timestamps | Turn on **Ignore DTS timestamps**; if that is not enough, Threadfin |
 | Empty guide | Guide not refreshed or different `tvg-id` values | Run **Refresh Guide** and map by hand (Step 4) |
+| Guide not updated for more than 6 hours | The GitHub Action failed or was disabled | In the **Actions** tab, read the error of the last **Update TV guide** run, or enable the workflow again |
 | A single channel stops working | The broadcaster changed the link | Regenerate and republish the playlist (Steps 1 and 1b) |
 | TV8, Cielo or Sky TG24 do not play | Expired token or no new link from yt-dlp | Regenerate the playlist; if it stays "Not updated", use digital terrestrial TV |
 
