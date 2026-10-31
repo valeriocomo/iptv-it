@@ -1,4 +1,4 @@
-# Generates the Italian IPTV playlist (upstream + refreshed Sky links).
+# Builds the Italian IPTV playlist: upstream playlist + refreshed Sky links.
 FROM node:26-alpine
 
 # Python is needed by yt-dlp. The venv is writable by any user, so
@@ -13,11 +13,10 @@ ENV PATH="/opt/yt/bin:$PATH" \
     OUTPUT_DIR=/data/public
 
 WORKDIR /app
-COPY src/ ./src/
-COPY entrypoint.sh ./
+COPY generate-playlist.js entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
-# mount your local clone of the GitHub repository here
+# mount your repository clone here
 VOLUME /data
 
 ENTRYPOINT ["/app/entrypoint.sh"]

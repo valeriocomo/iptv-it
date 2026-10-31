@@ -20,14 +20,14 @@ Nothing runs automatically: you start it by hand, then commit and push the file 
 
 | File | Purpose |
 | --- | --- |
-| `src/generate.js` | Downloads the upstream playlist, refreshes the Sky links, writes the output |
-| `entrypoint.sh` | Updates yt-dlp, then runs `src/generate.js` once |
-| `Dockerfile` | Node.js 26 on Alpine, with Python and yt-dlp |
+| `playlist/generate-playlist.js` | Downloads the upstream playlist, refreshes the Sky links, writes the output |
+| `playlist/entrypoint.sh` | Updates yt-dlp, then runs `generate-playlist.js` once |
+| `playlist/Dockerfile` | Node.js 26 on Alpine, with Python and yt-dlp |
 | `compose.yml` | Mounts your repository clone and runs the container |
 
 ## Setup
 
-1. Put these files (including the `src/` folder) in your repository clone. `compose.yml` mounts its own folder (`.`) as `/data`, so the playlist is written to `public/` inside it (the folder is created if missing). If you keep the files elsewhere, replace `.` with the absolute path of your clone.
+1. Put these files (including the `playlist/` folder) in your repository clone. `compose.yml` mounts its own folder (`.`) as `/data`, so the playlist is written to `public/` inside it (the folder is created if missing). If you keep the files elsewhere, replace `.` with the absolute path of your clone.
 2. Build the image:
 
    ```bash
@@ -82,7 +82,7 @@ GitHub caches raw files for about 5 minutes, so changes may take a few minutes t
 With Node.js 18+ and yt-dlp installed (`pip install -U yt-dlp`):
 
 ```bash
-node src/generate.js /path/to/your/repo/public
+node playlist/generate-playlist.js /path/to/your/repo/public
 ```
 
 ## Configuration

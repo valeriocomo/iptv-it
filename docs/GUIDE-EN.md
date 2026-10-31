@@ -35,7 +35,7 @@ Run it from an Italian network, ideally the same one as your Jellyfin server: Sk
 git clone https://github.com/valeriocomo/iptv-it.git
 ```
 
-**B. Set up the generator** (once). Put the files `Dockerfile`, `entrypoint.sh`, `generate.js`, `compose.yml` and `README.md` in the repository clone. `compose.yml` mounts its own folder, and the playlist is written to `public/iptvitaplus.m3u`, with the same name as Tundrak's file; the `public` folder is created if missing. Then build the image:
+**B. Set up the generator** (once). Put the `playlist` folder (`Dockerfile`, `entrypoint.sh`, `generate-playlist.js`), the file `compose.yml` and `README.md` in the repository clone. `compose.yml` mounts its own folder, and the playlist is written to `public/iptvitaplus.m3u`, with the same name as Tundrak's file; the `public` folder is created if missing. Then build the image:
 
 ```bash
 docker compose build
@@ -64,7 +64,7 @@ On Linux the container writes the file as user 1000. If `id -u` returns a differ
 PUID=$(id -u) PGID=$(id -g) docker compose run --rm playlist-generator
 ```
 
-Without Docker you need Node.js 18 or later and yt-dlp (`pip install -U yt-dlp`); then run `node generate.js iptv-it/public`.
+Without Docker you need Node.js 18 or later and yt-dlp (`pip install -U yt-dlp`); then run `node playlist/generate-playlist.js iptv-it/public`.
 
 ## Step 1b — Publish the playlist on GitHub
 

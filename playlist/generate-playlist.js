@@ -1,8 +1,8 @@
-// src/generate.js: builds the Italian IPTV playlist to publish on GitHub.
+// playlist/generate-playlist.js: builds the Italian IPTV playlist to publish on GitHub.
 //   1. downloads the upstream playlist (Tundrak/IPTV-Italia)
 //   2. refreshes the TV8, Cielo and Sky TG24 links with yt-dlp
 //   3. writes the result to the output folder, keeping the upstream file name
-// Usage: node src/generate.js [output-folder]   (default: public)
+// Usage: node playlist/generate-playlist.js [output-folder]   (default: public)
 // SOURCE_URL overrides the upstream playlist.
 // Needs Node.js 18+ (built-in fetch) and yt-dlp; run it from an Italian IP.
 const fs = require('fs');

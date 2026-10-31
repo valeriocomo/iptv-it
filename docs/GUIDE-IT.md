@@ -35,7 +35,7 @@ Lancialo da una rete italiana, possibilmente la stessa del server Jellyfin: le d
 git clone https://github.com/valeriocomo/iptv-it.git
 ```
 
-**B. Prepara il generatore** (una volta sola). Metti nel clone del repository i file `Dockerfile`, `entrypoint.sh`, `generate.js`, `compose.yml` e `README.md`. Il `compose.yml` monta la sua stessa cartella e la playlist viene scritta in `public/iptvitaplus.m3u`, con lo stesso nome del file di Tundrak; la cartella `public` viene creata se manca. Poi costruisci l'immagine:
+**B. Prepara il generatore** (una volta sola). Metti nel clone del repository la cartella `playlist` (`Dockerfile`, `entrypoint.sh`, `generate-playlist.js`), il file `compose.yml` e `README.md`. Il `compose.yml` monta la sua stessa cartella e la playlist viene scritta in `public/iptvitaplus.m3u`, con lo stesso nome del file di Tundrak; la cartella `public` viene creata se manca. Poi costruisci l'immagine:
 
 ```bash
 docker compose build
@@ -64,7 +64,7 @@ Su Linux il container scrive il file come utente 1000. Se `id -u` ti dà un nume
 PUID=$(id -u) PGID=$(id -g) docker compose run --rm playlist-generator
 ```
 
-Senza Docker serve Node.js 18 o successivo e yt-dlp (`pip install -U yt-dlp`); poi lanci `node generate.js iptv-it/public`.
+Senza Docker serve Node.js 18 o successivo e yt-dlp (`pip install -U yt-dlp`); poi lanci `node playlist/generate-playlist.js iptv-it/public`.
 
 ## Passo 1b — Pubblica la playlist su GitHub
 
