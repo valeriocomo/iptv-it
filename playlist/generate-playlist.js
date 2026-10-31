@@ -230,7 +230,7 @@ async function fetchText(url, headers) {
   const timer = setTimeout(() => controller.abort(), DIAG_TIMEOUT);
   try {
     const res = await fetch(url, { headers, redirect: 'follow', signal: controller.signal });
-    return { status: res.status, text: await res.text() };
+    return { status: res.status, url: res.url, text: await res.text() };
   } catch (err) {
     const reason = err.name === 'AbortError' ? 'timeout'
       : (err.cause && (err.cause.code || err.cause.message)) || err.message;
@@ -269,6 +269,54 @@ function streamUrlFromJson(text) {
     return { url: null, keys: 'not JSON' };
   }
 }
+
+// Known DRM systems, by the ids used in DASH and HLS manifests
+const DRM_SYSTEMS = [
+  [/edef8ba9-79d6-4ace-a3c8-27dcd51d21ed|widevine/i, 'Widevine'],
+  [/9a04f079-9840-4286-ab92-e65be0885f95|playready/i, 'PlayReady'],
+  [/com\.apple\.streamingkeydelivery|fairplay/i, 'FairPlay'],
+];
+
+function drmNames(text) {
+  const names = DRM_SYSTEMS.filter(([re]) => re.test(text)).map(([, n]) => n);
+  return names.length ? names.join(' + ') : 'DRM';
+}
+
+// Looks inside a manifest for encryption Jellyfin cannot play.
+// Returns 'none', a description of the DRM, or why it could not tell.
+async function drmCheck(url, headers = {}) {
+  const get = (u) => fetchText(u, { 'User-Agent': USER_AGENT, ...headers });
+  const res = await get(url);
+  if (res.status !== 200) return `could not read it (${res.error || `HTTP ${res.status}`})`;
+  const text = res.text;
+
+  if (/<MPD/i.test(text)) {
+    const tags = text.match(/<ContentProtection[^>]*>/gi) || [];
+    return tags.length ? `${drmNames(tags.join(' '))} (DASH ContentProtection)` : 'none';
+  }
+
+  // HLS: keys can be declared in the master playlist or in each variant
+  const isDrmKey = (line) => /METHOD=SAMPLE-AES/i.test(line)
+    || (/KEYFORMAT="/i.test(line) && !/KEYFORMAT="identity"/i.test(line));
+  const sessionKeys = text.split('\n').filter((l) => l.startsWith('#EXT-X-SESSION-KEY'));
+  if (sessionKeys.some(isDrmKey)) return `${drmNames(sessionKeys.join(' '))} (HLS session key)`;
+  let media = text;
+  if (/#EXT-X-STREAM-INF/.test(text)) {
+    const lines = text.split('\n').map((l) => l.trim());
+    const variant = lines[lines.findIndex((l) => l.startsWith('#EXT-X-STREAM-INF')) + 1];
+    if (!variant) return 'could not find a variant playlist';
+    const sub = await get(new URL(variant, res.url || url).href);
+    if (sub.status !== 200) return `could not read the variant (${sub.error || `HTTP ${sub.status}`})`;
+    media = sub.text;
+  }
+  const keys = media.split('\n').filter((l) => l.startsWith('#EXT-X-KEY'));
+  if (keys.some(isDrmKey)) return `${drmNames(keys.join(' '))} (HLS ${keys[0].match(/METHOD=[^,]+/)[0]})`;
+  if (keys.some((l) => /METHOD=AES-128/i.test(l))) return 'none (AES-128, playable)';
+  return 'none';
+}
+
+// Canale 5 is known to play in Jellyfin: used as a reference for the DRM check
+const REFERENCE_LINK = 'https://live03-col.msf.cdn.mediaset.net/live/ch-c5/c5-clr.isml/manifest.mpd';
 
 async function diagnose() {
   const out = (line = '') => console.log(line);
@@ -324,8 +372,16 @@ async function diagnose() {
     const plain = await checkStream(url);
     const withReferer = await checkStream(url, LA7_HEADERS);
     out(`  plain: ${result(plain).padEnd(22)} with Referer: ${result(withReferer)}`);
+    if (!plain || !withReferer) {
+      out(`    DRM: ${await drmCheck(url, plain ? LA7_HEADERS : {})}`);
+    }
     out(`    ${url}`);
   }
+
+  out();
+  out('== Reference: Canale 5 (plays in Jellyfin)');
+  const ref = await checkStream(REFERENCE_LINK);
+  out(`  ${result(ref)}${ref ? '' : `, DRM: ${await drmCheck(REFERENCE_LINK)}`}`);
   out();
   out('Diagnosis done.');
 }
